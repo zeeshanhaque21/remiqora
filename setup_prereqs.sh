@@ -30,8 +30,8 @@ if ! command -v brew >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "=== Toolchain (git, python, uv, node, cmake, ffmpeg, ninja) ==="
-brew install git python@3.12 uv node cmake ffmpeg ninja
+echo "=== Toolchain (git, python, uv, node, cmake, ffmpeg, ninja, whisper-cpp) ==="
+brew install git python@3.12 uv node cmake ffmpeg ninja whisper-cpp
 
 echo ""
 echo "=== Not automated - already built in on Apple Silicon ==="

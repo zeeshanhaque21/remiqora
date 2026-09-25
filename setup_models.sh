@@ -12,7 +12,8 @@
 # Demucs's torch at PyTorch's cu128 wheel index, not needed here since
 # ACE-Step-1.5's own pyproject.toml already resolves a plain, MPS-capable
 # torch wheel from PyPI on darwin/arm64, same as the plain "torch"
-# dependency in the Demucs project below).
+# dependency in the Demucs project below). It also downloads Whisper's
+# GGML weights for lyrics transcription (see the Whisper step below).
 #
 # Re-run any time - every step is idempotent (skips work that is already done).
 set -euo pipefail
@@ -294,9 +295,50 @@ else
     echo "Skipped Demucs 'uv sync' - install uv and re-run this script."
 fi
 
+step "Whisper (lyrics transcription)"
+# whisper.cpp's CLI + GGML weights, used by the remix import to transcribe a
+# source's vocals stem when the video ships no subtitles. The binary comes
+# from ./setup_prereqs.sh (brew install whisper-cpp); only the model file is
+# fetched here. Pinned + sha256-verified like the audio.cpp release above.
+WHISPER_DIR="$EXTERNAL_DIR/whisper"
+WHISPER_MODEL_FILE="$WHISPER_DIR/ggml-large-v3-turbo.bin"
+WHISPER_MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
+WHISPER_MODEL_SHA256="1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+
+if [[ "$SKIP_WEIGHTS" == "1" ]]; then
+    echo "Skipping Whisper model download (--skip-weights passed)."
+else
+    mkdir -p "$WHISPER_DIR"
+    # sha256 mismatch (or an absent file) means (re)download; a matching file
+    # is reused so re-running this script doesn't pull 1.6 GB again.
+    need_download=1
+    if [[ -f "$WHISPER_MODEL_FILE" ]]; then
+        if [[ "$(shasum -a 256 "$WHISPER_MODEL_FILE" | awk '{print $1}')" == "$WHISPER_MODEL_SHA256" ]]; then
+            echo "Already downloaded and verified, skipping."
+            need_download=0
+        fi
+    fi
+    if [[ "$need_download" == "1" ]]; then
+        if assert_command curl "Install it (should ship with macOS already)."; then
+            echo "Downloading ggml-large-v3-turbo.bin (~1.6 GB, resumable) ..."
+            curl -fL -C - -o "$WHISPER_MODEL_FILE" "$WHISPER_MODEL_URL"
+            actual_sha256=$(shasum -a 256 "$WHISPER_MODEL_FILE" | awk '{print $1}')
+            if [[ "$actual_sha256" != "$WHISPER_MODEL_SHA256" ]]; then
+                echo "[ERROR] sha256 mismatch for ggml-large-v3-turbo.bin" >&2
+                echo "  expected $WHISPER_MODEL_SHA256" >&2
+                echo "  got      $actual_sha256" >&2
+                echo "  Remove $WHISPER_MODEL_FILE and re-run to retry." >&2
+            else
+                echo "Verified Whisper model."
+            fi
+        fi
+    fi
+fi
+
 step "backend/.env"
 ENV_FILE="$ROOT/backend/.env"
 FFMPEG_BIN_DIR=$(find_ffmpeg_bin_dir || true)
+WHISPER_BIN=$(command -v whisper-cli || true)
 if [[ -n "${FFMPEG_BIN_DIR:-}" ]]; then
     echo "Found ffmpeg at $FFMPEG_BIN_DIR"
 else
@@ -316,6 +358,11 @@ DEMUCS_DIR=$DEMUCS_DIR
 # non-WAV-upload transcoding for YuE2).
 FFMPEG_BIN_DIR=${FFMPEG_BIN_DIR:-}
 
+# Whisper (whisper.cpp) transcribes a remix source's vocals stem to lyrics
+# when the video has no uploaded subtitles.
+WHISPER_MODEL_PATH=$WHISPER_MODEL_FILE
+WHISPER_BIN=$WHISPER_BIN
+
 # No CUDA_BIN_DIR here on purpose: on macOS, YuE2 (audiocpp_server) is
 # built with the Metal backend and ACE-Step/Demucs run on PyTorch's MPS
 # backend, both built into macOS - there's no CUDA toolkit to point at.
@@ -331,6 +378,10 @@ else
     echo "  DEMUCS_DIR=$DEMUCS_DIR"
     if [[ -n "${FFMPEG_BIN_DIR:-}" ]]; then
         echo "  FFMPEG_BIN_DIR=$FFMPEG_BIN_DIR (detected - edit backend/.env if it doesn't already match)"
+    fi
+    echo "  WHISPER_MODEL_PATH=$WHISPER_MODEL_FILE (add it to backend/.env if not already set)"
+    if [[ -n "${WHISPER_BIN:-}" ]]; then
+        echo "  WHISPER_BIN=$WHISPER_BIN (add it to backend/.env if not already set)"
     fi
 fi
 
