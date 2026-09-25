@@ -10,6 +10,7 @@ from .api.routes_midi import router as midi_router
 from .api.routes_orchestrator import router as orchestrator_router
 from .api.routes_projects import router as projects_router
 from .api.routes_proxy import router as proxy_router
+from .api.routes_remix import router as remix_router
 from .api.routes_stems import router as stems_router
 from .api.routes_tracks import router as tracks_router
 from .api.routes_yue2_upload import router as yue2_upload_router
@@ -32,6 +33,7 @@ app.include_router(stems_router)
 app.include_router(midi_router)
 app.include_router(projects_router)
 app.include_router(lora_dataset_router)
+app.include_router(remix_router)
 # Registered before proxy_router's catch-all so this exact path wins.
 app.include_router(yue2_upload_router)
 app.include_router(proxy_router)
