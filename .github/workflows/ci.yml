@@ -31,11 +31,16 @@ jobs:
       - run: npm run build
 
   backend:
-    name: Backend (syntax check)
+    name: Backend (syntax check + tests)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: python -m compileall -q backend/app
+      - run: python -m compileall -q app
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q
