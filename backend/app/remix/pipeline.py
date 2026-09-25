@@ -340,7 +340,17 @@ async def cancel(track_id: int) -> dict:
         job.cancel_event.set()
         if job.proc is not None:
             await _kill_tree(job.proc)
+        _mark_stage_cancelled(track_id, job)
     return status(track_id)
+
+
+def _mark_stage_cancelled(track_id: int, job: RemixJob) -> None:
+    """Persist a cancellation for the stage that was in flight, without
+    clobbering a stage that already produced a result."""
+    stage = job.stage or "download"
+    stages = get_stages(track_id)
+    if stages.get(stage, {}).get("status") not in ("done", "failed", "waiting_for_yue2"):
+        _set_stage(track_id, stage, "cancelled")
 
 
 def is_active(track_id: int) -> bool:
@@ -366,6 +376,9 @@ def status(track_id: int) -> dict:
 
 
 async def _run_import(track_id: int, url: str, info: dict) -> None:
+    # start() normally created the job, but a direct call (tests, future
+    # callers) must not depend on that.
+    _jobs.setdefault(track_id, RemixJob(status="running", stage="download"))
     try:
         await _stage_download(track_id, info)
         if _cancelled(track_id):
@@ -384,6 +397,7 @@ async def _run_import(track_id: int, url: str, info: dict) -> None:
 
 
 async def _run_lyrics_retry(track_id: int) -> None:
+    _jobs.setdefault(track_id, RemixJob(status="running", stage="lyrics"))
     try:
         await _stage_lyrics(track_id)
     except _Cancelled:
@@ -393,6 +407,7 @@ async def _run_lyrics_retry(track_id: int) -> None:
 
 
 async def _run_melody(track_id: int, *, force: bool = False) -> None:
+    _jobs.setdefault(track_id, RemixJob(status="running", stage="melody"))
     try:
         await _stage_melody(track_id)
     except _Cancelled:
@@ -408,15 +423,8 @@ def _cancelled(track_id: int) -> bool:
 
 def _finish_cancelled(track_id: int) -> None:
     job = _jobs.get(track_id)
-    if job is None:
-        return
-    if job.cancel_requested:
-        # Mark the stage that was in flight as cancelled; any stage already
-        # done keeps its result.
-        stage = job.stage or "download"
-        stages = get_stages(track_id)
-        if stages.get(stage, {}).get("status") not in ("done", "failed", "waiting_for_yue2"):
-            _set_stage(track_id, stage, "cancelled")
+    if job is not None and job.cancel_requested:
+        _mark_stage_cancelled(track_id, job)
 
 
 def _fail_current(track_id: int, error: str) -> None:
@@ -587,7 +595,7 @@ async def _transcribe_with_whisper(track_id: int) -> Path:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / f"{log_name}.log"
     env = _ffmpeg_env()
-    job = _jobs[track_id]
+    job = _jobs.setdefault(track_id, RemixJob(status="running", stage="lyrics"))
     try:
         with open(log_path, "w", encoding="utf-8", errors="replace") as log_file:
             proc = await asyncio.create_subprocess_exec(
@@ -618,7 +626,7 @@ async def _stage_melody(track_id: int) -> None:
         return
 
     _set_stage(track_id, "melody", "running")
-    job = _jobs[track_id]
+    job = _jobs.setdefault(track_id, RemixJob(status="running", stage="melody"))
     row = db.get_track(track_id)
     if row is None:
         raise RuntimeError("track not found")

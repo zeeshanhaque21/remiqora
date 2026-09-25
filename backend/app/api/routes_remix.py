@@ -158,7 +158,13 @@ def _find_existing(extractor: Optional[str], video_id: Optional[str]):
         return None
     for row in db.list_tracks(MODEL):
         params = json.loads(row["params_json"] or "{}")
-        if params.get("video_id") == video_id and (not extractor or params.get("extractor") == extractor):
+        if params.get("video_id") != video_id:
+            continue
+        # video_id alone is the identity of a source; the extractor is only a
+        # fallback comparison because yt-dlp reports it under different names
+        # ("extractor" vs "extractor_key") and in different cases between runs.
+        stored = params.get("extractor")
+        if not extractor or not stored or str(stored).lower() == str(extractor).lower():
             return row
     return None
 
@@ -219,6 +225,8 @@ async def run_abc_tool(tool: str, body: AbcToolRequest):
     func = _TOOLS.get(tool)
     if func is None:
         raise HTTPException(status_code=404, detail=f"unknown ABC tool '{tool}'")
+    if not body.abc.strip():
+        raise HTTPException(status_code=400, detail="ABC input is empty")
     kwargs = dict(body.kwargs or {})
     if tool == "fit":
         kwargs.setdefault("lyrics", "")
