@@ -146,6 +146,36 @@ def update_track_title(track_id: int, title: str) -> bool:
     return True
 
 
+def update_track_lyrics(track_id: int, lyrics: str) -> None:
+    db = get_db()
+    db.execute("UPDATE tracks SET lyrics = ? WHERE id = ?", (lyrics, track_id))
+    db.commit()
+
+
+def update_track_audio_path(track_id: int, audio_path: Path) -> None:
+    db = get_db()
+    db.execute("UPDATE tracks SET audio_path = ? WHERE id = ?", (str(audio_path), track_id))
+    db.commit()
+
+
+def update_track_abc(track_id: int, abc_path: Optional[Path]) -> None:
+    db = get_db()
+    db.execute(
+        "UPDATE tracks SET abc_path = ? WHERE id = ?",
+        (str(abc_path) if abc_path else None, track_id),
+    )
+    db.commit()
+
+
+def update_track_params(track_id: int, params: dict[str, Any]) -> None:
+    db = get_db()
+    db.execute(
+        "UPDATE tracks SET params_json = ? WHERE id = ?",
+        (json.dumps(params, ensure_ascii=False), track_id),
+    )
+    db.commit()
+
+
 def update_track_stems(track_id: int, stems: Optional[dict[str, str]]) -> None:
     db = get_db()
     db.execute(

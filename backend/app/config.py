@@ -11,6 +11,7 @@ machine only means editing that one file, not this source file.
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -93,6 +94,22 @@ SHEETSAGE_MODEL_PATH = _env_path(
     "SHEETSAGE_MODEL_PATH",
     str(YUE2_DIR / "models" / "SheetSage2-GGUF" / "sheetsage2-orig.gguf"),
 )
+
+# Whisper (whisper.cpp) transcribes the Demucs vocals stem to subtitles when a
+# source video has no uploaded subtitle track. Unlike the models above it is a
+# one-shot CLI job, not a server, so it has no MODELS entry: only the binary
+# and the GGUF weights matter here. setup_models.sh downloads the model into
+# external/whisper and writes both values into backend/.env.
+WHISPER_BIN = os.getenv("WHISPER_BIN", "").strip() or shutil.which("whisper-cli") or "whisper-cli"
+WHISPER_MODEL_PATH = _env_path(
+    "WHISPER_MODEL_PATH",
+    str(Path(__file__).resolve().parent.parent.parent / "external" / "whisper" / "ggml-large-v3-turbo.bin"),
+)
+
+# Upper bound on an imported source video's duration. Downloading and
+# transcribing a full-length track is a multi-minute GPU job; this caps what a
+# single /api/remix/import call can commit to.
+REMIX_MAX_DURATION_S = int(os.getenv("REMIX_MAX_DURATION_S", "600"))
 
 
 def yue2_specs() -> dict[str, dict[str, str]]:

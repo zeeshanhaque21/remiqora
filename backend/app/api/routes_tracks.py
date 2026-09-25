@@ -23,7 +23,7 @@ from ..config import MODELS
 router = APIRouter(prefix="/api/tracks", tags=["tracks"])
 
 ALLOWED_AUDIO_EXT = {"wav", "mp3", "flac"}
-ALLOWED_TRACK_MODELS = set(MODELS.keys()) | {"editor", "upload"}
+ALLOWED_TRACK_MODELS = set(MODELS.keys()) | {"editor", "upload", "youtube"}
 
 
 def _sanitize(text: str) -> str:
